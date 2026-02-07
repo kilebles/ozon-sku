@@ -133,10 +133,10 @@ async def find_sku_position(
     tab: uc.Tab,
     target_sku: str,
     max_items: int = 1000,
-    scroll_step: int = 600,
-    min_delay: float = 0.3,
-    load_wait: float = 1.5,
-    stale_threshold: int = 8,
+    scroll_step: int = 2000,
+    min_delay: float = 0.15,
+    load_wait: float = 0.5,
+    stale_threshold: int = 5,
 ) -> dict | None:
     """
     Find SKU position in search results with adaptive scrolling.
@@ -196,6 +196,9 @@ async def find_sku_position(
         current_count = len(seen_skus)
         logger.debug(f"Total unique SKUs: {current_count} (+{new_this_round} new)")
 
+        # Log progress every scroll (INFO level for visibility)
+        logger.info(f"Progress: {current_count}/{max_items} positions checked (scroll #{scroll_count}, +{new_this_round} new)")
+
         # Check if new items appeared
         if current_count == prev_count:
             stale_count += 1
@@ -212,7 +215,6 @@ async def find_sku_position(
         scroll_count += 1
         scroll_before = await tab.evaluate("window.scrollY")
         await tab.evaluate(f"window.scrollBy(0, {scroll_step})")
-        await asyncio.sleep(0.1)  # Small delay to let scroll complete
         scroll_after = await tab.evaluate("window.scrollY")
         actual_scroll = scroll_after - scroll_before
         logger.debug(f"Scroll #{scroll_count}: requested={scroll_step}px, actual={actual_scroll}px (scrollY: {scroll_before} -> {scroll_after})")
@@ -222,5 +224,7 @@ async def find_sku_position(
         if scroll_after >= max_scroll - 10:
             logger.debug(f"Reached bottom of page (scrollY={scroll_after}, maxScroll={max_scroll})")
 
+    if len(seen_skus) >= max_items:
+        logger.info(f"Reached max_items limit ({max_items}), moving to next query")
     logger.warning(f"SKU {target_sku} not found in {len(seen_skus)} products")
     return None
