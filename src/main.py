@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from urllib.parse import quote
 
 import nodriver as uc
@@ -6,7 +7,28 @@ import nodriver as uc
 from src.core.logger import logger
 from src.core.settings import settings
 from src.parser.browser import find_sku_position
-from src.services.sheets import get_sku_with_queries
+from src.services.sheets import get_sku_with_queries, insert_results_column, write_result
+
+
+async def sheets_writer(queue: asyncio.Queue) -> None:
+    """Background task that writes results to Google Sheets."""
+    while True:
+        item = await queue.get()
+        if item is None:  # Poison pill to stop
+            queue.task_done()
+            break
+
+        row, value = item
+        try:
+            # Run blocking gspread call in thread pool
+            await asyncio.get_event_loop().run_in_executor(
+                None, write_result, row, value
+            )
+            logger.debug(f"Written to row {row}: {value}")
+        except Exception as e:
+            logger.error(f"Failed to write to row {row}: {e}")
+        finally:
+            queue.task_done()
 
 
 async def main() -> None:
@@ -17,6 +39,15 @@ async def main() -> None:
         logger.warning("No SKUs to process")
         return
 
+    # Insert new column D with timestamp header
+    timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
+    logger.info(f"Inserting new column D: {timestamp}")
+    insert_results_column(timestamp)
+
+    # Start background writer
+    write_queue: asyncio.Queue = asyncio.Queue()
+    writer_task = asyncio.create_task(sheets_writer(write_queue))
+
     browser = await uc.start()
     logger.info("Browser started")
 
@@ -25,7 +56,9 @@ async def main() -> None:
         queries = item["queries"]
         logger.info(f"Processing SKU: {sku} ({len(queries)} queries)")
 
-        for query in queries:
+        for query_data in queries:
+            query = query_data["query"]
+            row = query_data["row"]
             search_url = settings.ozon_search_url + quote(query)
             logger.info(f"Query: {query}")
             logger.debug(f"URL: {search_url}")
@@ -36,9 +69,20 @@ async def main() -> None:
             result = await find_sku_position(tab, sku)
 
             if result:
-                logger.info(f"Position: {result['position']} (total scanned: {result['total_items']})")
+                position = result["position"]
+                value = str(position) if position < 1000 else "1000+"
+                logger.info(f"Position: {position} -> writing '{value}' to row {row}")
             else:
-                logger.warning(f"SKU {sku} not found for query: {query}")
+                value = "1000+"
+                logger.warning(f"SKU {sku} not found for query: {query} -> writing '1000+'")
+
+            # Queue result for async writing (non-blocking)
+            await write_queue.put((row, value))
+
+    # Stop writer and wait for all writes to complete
+    await write_queue.put(None)  # Poison pill
+    await write_queue.join()
+    await writer_task
 
     logger.info("Done!")
     browser.stop()

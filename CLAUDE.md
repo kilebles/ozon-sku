@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ozon-call is a Python 3.12 web scraping/automation tool that uses Camoufox (stealth Firefox browser) to parse data and exports results to Google Sheets.
+ozon-call is a Python 3.12 web scraping/automation tool that uses nodriver to parse data and exports results to Google Sheets.
 
 ## Commands
 
@@ -20,7 +20,7 @@ uv run python -m src.main
 
 - **src/core/settings.py** - Pydantic Settings configuration, loads from `.env` file
 - **src/services/sheets.py** - Google Sheets integration using gspread with service account auth
-- **src/parser/** - Browser automation/parsing logic (uses Camoufox)
+- **src/parser/** - Browser automation/parsing logic
 
 ## Configuration
 

@@ -37,7 +37,7 @@ def get_sku_with_queries() -> list[dict]:
     - Rows after without article in A: search queries for that SKU
 
     Returns:
-        [{'sku': str, 'queries': [str, ...], 'row': int}, ...]
+        [{'sku': str, 'queries': [{'query': str, 'row': int}, ...], 'row': int}, ...]
     """
     worksheet = get_worksheet()
     col_a = worksheet.col_values(1)  # Column A - articles/SKUs
@@ -45,7 +45,7 @@ def get_sku_with_queries() -> list[dict]:
 
     result = []
     current_sku = None
-    current_row = None
+    query_row = None
 
     for i in range(len(col_c)):
         article = col_a[i] if i < len(col_a) else ""
@@ -60,13 +60,27 @@ def get_sku_with_queries() -> list[dict]:
             if current_sku is not None:
                 result.append(current_sku)
             current_sku = {"sku": article, "queries": [], "row": i + 1}
-            current_row = i
         elif value_c and current_sku is not None:
-            # Query row for current SKU
-            current_sku["queries"].append(value_c)
+            # Query row for current SKU - store row number for each query
+            current_sku["queries"].append({"query": value_c, "row": i + 1})
 
     # Don't forget last SKU
     if current_sku is not None:
         result.append(current_sku)
 
     return result
+
+
+def insert_results_column(header: str) -> None:
+    """Insert a new column D with the given header."""
+    worksheet = get_worksheet()
+    # Insert column at position D (index 4)
+    worksheet.insert_cols([[]], col=4)
+    # Set header in D1
+    worksheet.update_cell(1, 4, header)
+
+
+def write_result(row: int, value: str) -> None:
+    """Write result to column D at specified row."""
+    worksheet = get_worksheet()
+    worksheet.update_cell(row, 4, value)
