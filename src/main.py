@@ -6,7 +6,7 @@ import nodriver as uc
 
 from src.core.logger import logger
 from src.core.settings import settings
-from src.parser.browser import find_sku_position
+from src.parser.browser import find_sku_position, open_page_with_blocking
 from src.services.sheets import get_sku_with_queries, insert_results_column, write_result
 
 
@@ -18,11 +18,11 @@ async def sheets_writer(queue: asyncio.Queue) -> None:
             queue.task_done()
             break
 
-        row, value = item
+        row, value, is_found = item
         try:
             # Run blocking gspread call in thread pool
             await asyncio.get_event_loop().run_in_executor(
-                None, write_result, row, value
+                None, write_result, row, value, is_found
             )
             logger.debug(f"Written to row {row}: {value}")
         except Exception as e:
@@ -63,21 +63,23 @@ async def main() -> None:
             logger.info(f"Query: {query}")
             logger.debug(f"URL: {search_url}")
 
-            tab = await browser.get(search_url)
+            tab = await open_page_with_blocking(browser, search_url)
             await asyncio.sleep(2)  # Wait for initial load
 
             result = await find_sku_position(tab, sku)
 
             if result:
                 position = result["position"]
-                value = str(position) if position < 1000 else "1000+"
+                is_found = position < 1000
+                value = str(position) if is_found else "1000+"
                 logger.info(f"Position: {position} -> writing '{value}' to row {row}")
             else:
                 value = "1000+"
+                is_found = False
                 logger.warning(f"SKU {sku} not found for query: {query} -> writing '1000+'")
 
             # Queue result for async writing (non-blocking)
-            await write_queue.put((row, value))
+            await write_queue.put((row, value, is_found))
 
     # Stop writer and wait for all writes to complete
     await write_queue.put(None)  # Poison pill

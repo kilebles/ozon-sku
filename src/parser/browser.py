@@ -3,9 +3,19 @@ import json as json_module
 import re
 
 import nodriver as uc
+from nodriver import cdp
 
 from src.core.logger import logger
 from src.core.settings import settings
+
+# URLs to block for faster page loading
+BLOCKED_URLS = [
+    "*.jpg", "*.jpeg", "*.png", "*.gif", "*.webp", "*.svg",
+    "*.woff", "*.woff2", "*.ttf",
+    "*google-analytics.com*", "*mc.yandex.ru*", "*metrika*",
+    "*doubleclick.net*", "*googlesyndication.com*", "*facebook.com*",
+    "*tns-counter.ru*", "*top-fwz1.mail.ru*", "*vk.com/rtrg*",
+]
 
 SKU_PATTERN = re.compile(r"/product/[^/]+-(\d+)/")
 
@@ -26,7 +36,29 @@ JS_GET_PRODUCTS = """
 
 async def start_browser() -> uc.Browser:
     """Start nodriver browser instance."""
-    return await uc.start()
+    browser = await uc.start()
+    return browser
+
+
+async def setup_resource_blocking(tab: uc.Tab) -> None:
+    """Block unnecessary resources (images, fonts, analytics) for faster loading."""
+    try:
+        await tab.send(cdp.network.enable())
+        await tab.send(cdp.network.set_blocked_ur_ls(urls=BLOCKED_URLS))
+        logger.info("Resource blocking enabled")
+    except Exception as e:
+        logger.warning(f"Could not enable resource blocking: {e}")
+
+
+async def open_page_with_blocking(browser: uc.Browser, url: str) -> uc.Tab:
+    """Open a new tab, setup blocking, then navigate to URL."""
+    # Create blank tab first
+    tab = await browser.get("about:blank")
+    # Enable blocking before navigation
+    await setup_resource_blocking(tab)
+    # Now navigate
+    await tab.get(url)
+    return tab
 
 
 async def open_page(browser: uc.Browser, url: str | None = None) -> uc.Tab:

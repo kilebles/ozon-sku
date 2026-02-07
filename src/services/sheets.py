@@ -80,7 +80,28 @@ def insert_results_column(header: str) -> None:
     worksheet.update_cell(1, 4, header)
 
 
-def write_result(row: int, value: str) -> None:
-    """Write result to column D at specified row."""
+def write_result(row: int, value: str, is_found: bool = True) -> None:
+    """Write result to column D at specified row with color formatting.
+
+    Args:
+        row: Row number to write to
+        value: Value to write (position or "1000+")
+        is_found: True if position < 1000 (green), False if "1000+" (white)
+    """
     worksheet = get_worksheet()
+    cell = f"D{row}"
+
+    # Write value
     worksheet.update_cell(row, 4, value)
+
+    # Format cell color
+    if is_found:
+        # Green background for found items
+        worksheet.format(cell, {
+            "backgroundColor": {"red": 0.85, "green": 0.93, "blue": 0.83}
+        })
+    else:
+        # White background for 1000+
+        worksheet.format(cell, {
+            "backgroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}
+        })
