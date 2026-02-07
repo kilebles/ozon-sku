@@ -167,8 +167,8 @@ async def find_sku_position(
     max_items: int = 1000,
     scroll_step: int = 2000,
     min_delay: float = 0.15,
-    load_wait: float = 0.5,
-    stale_threshold: int = 5,
+    load_wait: float = 1.0,
+    stale_threshold: int = 10,
 ) -> dict | None:
     """
     Find SKU position in search results with adaptive scrolling.
@@ -235,8 +235,10 @@ async def find_sku_position(
         # Check if new items appeared
         if current_count == prev_count:
             stale_count += 1
-            logger.debug(f"No new products, stale_count={stale_count}/{stale_threshold}")
-            if stale_count >= stale_threshold:
+            # If we have few items, be more patient (maybe slow loading)
+            effective_threshold = stale_threshold * 2 if current_count < 100 else stale_threshold
+            logger.debug(f"No new products, stale_count={stale_count}/{effective_threshold}")
+            if stale_count >= effective_threshold:
                 logger.info(f"End of results reached after {scroll_count} scrolls, {current_count} products")
                 break
             await asyncio.sleep(load_wait)
