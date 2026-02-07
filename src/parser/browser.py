@@ -196,8 +196,9 @@ async def find_sku_position(
         current_count = len(seen_skus)
         logger.debug(f"Total unique SKUs: {current_count} (+{new_this_round} new)")
 
-        # Log progress every scroll (INFO level for visibility)
-        logger.info(f"Progress: {current_count}/{max_items} positions checked (scroll #{scroll_count}, +{new_this_round} new)")
+        # Log progress only when new items found (avoid spam)
+        if new_this_round > 0:
+            logger.info(f"Progress: {current_count}/{max_items} positions checked (+{new_this_round} new)")
 
         # Check if new items appeared
         if current_count == prev_count:
