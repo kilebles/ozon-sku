@@ -169,6 +169,7 @@ async def find_sku_position(
     min_delay: float = 0.15,
     load_wait: float = 1.0,
     stale_threshold: int = 10,
+    min_products_required: int = 1000,
 ) -> dict | None:
     """
     Find SKU position in search results with adaptive scrolling.
@@ -190,6 +191,13 @@ async def find_sku_position(
     scroll_y = await tab.evaluate("window.scrollY")
     logger.debug(f"Initial state: URL={current_url}")
     logger.debug(f"Page dimensions: scrollHeight={scroll_height}, viewportHeight={viewport_height}, scrollY={scroll_y}")
+
+    # Initial scroll to bottom and back to trigger lazy loading of all products
+    logger.debug("Initial scroll to trigger lazy loading...")
+    await tab.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+    await asyncio.sleep(1.0)
+    await tab.evaluate("window.scrollTo(0, 0)")
+    await asyncio.sleep(1.0)
 
     seen_skus: dict[str, int] = {}
     stale_count = 0
@@ -249,17 +257,34 @@ async def find_sku_position(
         # Scroll using JS (more reliable than scroll_down)
         scroll_count += 1
         scroll_before = await tab.evaluate("window.scrollY")
+        max_scroll = await tab.evaluate("document.documentElement.scrollHeight - window.innerHeight")
+
+        # If at bottom with few items, try aggressive scroll reset to trigger lazy load
+        if scroll_before >= max_scroll - 50 and current_count < 100:
+            logger.info(f"At bottom with only {current_count} items, trying scroll reset...")
+            # Scroll to top
+            await tab.evaluate("window.scrollTo(0, 0)")
+            await asyncio.sleep(1.0)
+            # Scroll to bottom slowly to trigger all lazy loads
+            for scroll_pos in range(0, int(max_scroll), 500):
+                await tab.evaluate(f"window.scrollTo(0, {scroll_pos})")
+                await asyncio.sleep(0.2)
+            await asyncio.sleep(1.0)
+
         await tab.evaluate(f"window.scrollBy(0, {scroll_step})")
         scroll_after = await tab.evaluate("window.scrollY")
         actual_scroll = scroll_after - scroll_before
         logger.debug(f"Scroll #{scroll_count}: requested={scroll_step}px, actual={actual_scroll}px (scrollY: {scroll_before} -> {scroll_after})")
 
         # Debug: check if we've reached the bottom
-        max_scroll = await tab.evaluate("document.documentElement.scrollHeight - window.innerHeight")
         if scroll_after >= max_scroll - 10:
             logger.debug(f"Reached bottom of page (scrollY={scroll_after}, maxScroll={max_scroll})")
 
+    # Reached 1000+ items without finding SKU - that's a valid "not found"
     if len(seen_skus) >= max_items:
-        logger.info(f"Reached max_items limit ({max_items}), moving to next query")
-    logger.warning(f"SKU {target_sku} not found in {len(seen_skus)} products")
-    return None
+        logger.info(f"Reached {max_items} products, SKU not found -> 1000+")
+        return None
+
+    # Didn't find SKU AND didn't reach 1000 products - page didn't load properly, retry
+    logger.warning(f"Only found {len(seen_skus)} products (< {min_products_required}), page needs reload")
+    return {"needs_retry": True, "products_found": len(seen_skus)}

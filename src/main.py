@@ -63,12 +63,31 @@ async def main() -> None:
             logger.info(f"Query: {query}")
             logger.debug(f"URL: {search_url}")
 
-            tab = await open_page_with_blocking(browser, search_url)
-            await asyncio.sleep(2)  # Wait for initial load
+            max_retries = 3
+            result = None
 
-            result = await find_sku_position(tab, sku)
+            for attempt in range(max_retries):
+                if attempt > 0:
+                    logger.info(f"Retry {attempt}/{max_retries} for query: {query}")
 
-            if result:
+                tab = await open_page_with_blocking(browser, search_url)
+                await asyncio.sleep(3)  # Wait for initial load
+
+                result = await find_sku_position(tab, sku)
+
+                # Check if we need to retry (page didn't load enough products)
+                if result and result.get("needs_retry"):
+                    products_found = result.get("products_found", 0)
+                    logger.warning(f"Page incomplete ({products_found} products), reloading...")
+                    await tab.close()
+                    result = None
+                    await asyncio.sleep(1)
+                    continue
+
+                # Got a valid result or reached 1000+ items
+                break
+
+            if result and "position" in result:
                 position = result["position"]
                 is_found = position < 1000
                 value = str(position) if is_found else "1000+"
