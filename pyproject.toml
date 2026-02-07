@@ -1,0 +1,12 @@
+[project]
+name = "ozon-call"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "camoufox[geoip]>=0.4.0",
+    "gspread>=6.0.0",
+    "nodriver>=0.38",
+    "pydantic-settings>=2.12.0",
+]
